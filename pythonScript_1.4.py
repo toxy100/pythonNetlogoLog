@@ -92,12 +92,25 @@ with open("reportlog.csv", 'wb') as f:
                         slider_events_report.append([timestamp,content[slider_events_range[i][0] + 2][10:-8],content[slider_events_range[i][0] + 3][11:-9],content[slider_events_range[i][1] + 3][11:-9]])
 
                 button_events_report = []
+                button_events_delete = []
                 if len(button_events) > 0:
 
                     for i in range(len(button_events)):
                         temp = string.find(content[button_events[i][0]],"timestamp")
                         timestamp = content[button_events[i][0]][temp+11:temp+24]
                         button_events_report.append([timestamp,button_events[i][1]])
+
+                    for j in range(len(button_events_report)):
+                        temp = button_events_report[j][1]
+                        if temp[:8]!='go/pause' and temp[-8:]=='released':
+                            button_events_report[j]='delete'
+                        button_events_delete.append(button_events_report[j])
+
+                    def remove_values_from_list(the_list, val):
+                        while val in the_list:
+                            the_list.remove(val)
+
+                    remove_values_from_list(button_events_delete, 'delete')
 
                 custom_message_report = []
                 if len(custom_message) > 0:
@@ -111,6 +124,15 @@ with open("reportlog.csv", 'wb') as f:
                 combinedlist = []
                 combinedlist = done_loading_report + slider_events_report + button_events_report + custom_message_report
                 combinedlist.sort()
+
+                if len(combinedlist) > 0:
+                    for i in range(len(combinedlist)):
+                        temp = combinedlist[i][1]
+                        if temp[:11]=='tick-count_':
+                            combinedlist[i-1].extend(['','',temp[11:]])
+                            combinedlist[i]='delete'
+
+                remove_values_from_list(combinedlist, 'delete')
                 
                 duration=[0]
                 for i in range(len(combinedlist) - 1):
@@ -127,4 +149,4 @@ with open("reportlog.csv", 'wb') as f:
                 print filename[filenum] + " processed"
                 writer.writerows(combinedlist)   
                 
-#V_1.4, Created by Bryan Guo for the ModelSim project. Oct. 10th 2013
+#V_1.5, Created by Bryan Guo for the ModelSim project. Dec. 16th 2013
