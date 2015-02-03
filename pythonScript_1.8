@@ -1,0 +1,216 @@
+import string
+import csv
+import re
+import datetime
+
+filename = []
+filename = open('./oct1.txt').read().split()
+
+#open an empty csv file to write values into it
+with open("run_analysis.csv", 'wb') as f:
+    writer = csv.writer(f)
+
+#open one logfile
+    for filenum in range(len(filename)):
+        with open("./oct1/" + filename[filenum], "r") as logfile:
+            content = logfile.readlines()
+            logfile.close()
+
+#detect if this file is broken (interrupted by connection prblems, etc)
+        brokenfile = False
+
+        for i in range(len(content)):
+            if 'terminated' in content[i]:
+                brokenfile = True
+            
+        if brokenfile == True:
+            print filename[filenum] + " broken!"
+            
+#if it's an intact log file, locate username and interaction range
+        else:
+            for i in range(len(content)):
+                if '<code>' in content[i]:
+                    done_loading = content[i-1]
+                    break#find the first one then quit
+
+            for i in range(len(content)):
+                if 'username' in content[i]:
+                    meta_info = content[i]
+                if '<error' in content[i]:
+                    interaction_starts = i
+                if '</eventSet' in content[i]:
+                    interaction_ends = i
+                    break
+
+#search for student name and model name
+            n = re.search(" name=\"(.)*\" i", meta_info)
+            name_report = n.group(0)[7:-3]
+
+            m = re.search(" modelName=\"(.)*\" v", meta_info)
+            model_report = m.group(0)[12:-3]
+
+            temp = string.find(done_loading,"timestamp")
+            done_loading_time = done_loading[temp+11:temp+24]
+            done_loading_report = [[done_loading_time, "Model Loaded"]]
+            starting_time = datetime.datetime.fromtimestamp(int(done_loading_time[:-3])).strftime('%Y-%m-%d %H:%M:%S')
+
+            
+#find slider, button, and custom message lines
+            slider_events = []
+            button_events = []
+            custom_message = []
+            setup_line_number=[]
+
+            for i in range(interaction_starts, interaction_ends):
+                if "type=\"slider\"" in content[i]:
+                    slider_name = content[i+2][10:-8]
+                    slider_events.append([i, slider_name])
+                    
+                if "type=\"button\"" in content[i]:
+                    button_name = content[i+1][10:-8]
+                    if "pressed" in content[i+2]:
+                        button_events.append([i, button_name + " pressed"])
+                        if "setup" in content[i+1]:
+                            setup_line_number.append(i)
+                    if "released" in content[i+2]:
+                        button_events.append([i, button_name + " released"])
+                if "type=\"custom message\"" in content[i]:
+                    message_content = content[i+1][13:-11]
+                    custom_message.append([i,message_content])
+
+
+            slider_events_report = []
+            if len(slider_events) > 0:
+                slider_events_range = []
+                slider_event_start = int(slider_events[0][0])
+
+                for i in range(len(slider_events) - 1):
+                    if slider_events[i][1] != slider_events[i+1][1]:
+                        slider_events_range.append([slider_event_start, int(slider_events[i][0])])
+                        slider_event_start = int(slider_events[i+1][0])
+                slider_events_range.append([slider_event_start, int(slider_events[len(slider_events)-1][0])])
+
+
+                for i in range(len(slider_events_range)):
+                    temp = string.find(content[slider_events_range[i][1]],"timestamp")
+                    timestamp = content[slider_events_range[i][1]][temp+11:temp+24]
+                    slider_events_report.append([timestamp,content[slider_events_range[i][0] + 2][10:-8],content[slider_events_range[i][0] + 3][11:-9],content[slider_events_range[i][1] + 3][11:-9]])
+
+            button_events_report = []
+            if len(button_events) > 0:
+
+                for i in range(len(button_events)):
+                    temp = string.find(content[button_events[i][0]],"timestamp")
+                    timestamp = content[button_events[i][0]][temp+11:temp+24]
+                    button_events_report.append([timestamp,button_events[i][1]])
+
+            custom_message_report = []
+            if len(custom_message) > 0:
+
+                for i in range(len(custom_message)):
+                    temp = string.find(content[custom_message[i][0]],"timestamp")
+                    timestamp = content[custom_message[i][0]][temp+11:temp+24]
+                    custom_message_report.append([timestamp,custom_message[i][1]])
+
+            list_length = len(done_loading_report) + len(slider_events_report) + len (button_events_report) + len (custom_message_report) 
+            combinedlist = []
+            combinedlist = done_loading_report + slider_events_report + button_events_report + custom_message_report
+            combinedlist.sort()
+            
+            duration=[0]
+            for i in range(len(combinedlist) - 1):
+                duration.append(int(combinedlist[i+1][0][:-3]) - int(combinedlist[i][0][:-3]))
+             
+
+            for i in range(len(combinedlist)):
+                combinedlist[i].insert(0,name_report)
+                time = datetime.datetime.fromtimestamp(int(combinedlist[i][1][:-3])).strftime('%Y-%m-%d %H:%M:%S')
+                combinedlist[i].insert(1,time)
+                combinedlist[i].insert(1,model_report)
+                combinedlist[i].insert(4,duration[i])
+                
+#            print filename[filenum] + " processed"
+#            writer.writerows(combinedlist)   
+            
+
+
+            setup_count=0
+            student_name_list = []
+            model_name_list=[]
+            starting_time_list=[]
+            setup_count_list=[]
+            timestamp_list=[]
+            for i in range(len(combinedlist)):
+                if combinedlist[i][5]=='setup pressed':
+                    student_name_list.append(combinedlist[i][0])
+                    model_name_list.append(combinedlist[i][1])
+                    starting_time_list.append(starting_time)
+                    setup_count_list.append(setup_count+1)
+                    timestamp_list.append(combinedlist[i][3])
+#                    final_list.append(final_list_item)
+#                    final_list_item=[]
+                    setup_count+=1
+            
+            
+            checkback=interaction_ends
+            for i in range(0,10):
+                if 'timestamp' in content[checkback]:
+                    end_of_last_run=checkback
+                    break
+                else:
+                    checkback-=1
+                
+            
+            temp = string.find(content[end_of_last_run], 'timestamp')
+            end_time_last_run = content[end_of_last_run][temp+11:temp+24]
+            
+            duration_list=[]
+            for i in range(len(timestamp_list)-1):
+                duration_list.append(int(timestamp_list[i+1])-int(timestamp_list[i]))
+            duration_list.append(int(end_time_last_run)-int(timestamp_list[len(timestamp_list)-1]))
+            
+            
+            button_between_setups = 0
+            button_press = []
+            for j in range(len(setup_line_number)-1):
+                for i in range(len(button_events)):
+                    if button_events[i][0] > setup_line_number[j] and button_events[i][0] < setup_line_number[j+1] and button_events[i][1][-7:]=='pressed':
+                        button_between_setups += 1
+                button_press.append(button_between_setups)
+                button_between_setups = 0
+            
+            for i in range(len(button_events)):
+                if button_events[i][0] > setup_line_number[len(setup_line_number)-1] and button_events[i][0] < end_of_last_run and button_events[i][1][-7:]=='pressed':
+                    button_between_setups += 1
+            button_press.append(button_between_setups)
+            button_between_setups = 0
+
+            slider_between_setups = 0
+            slider_drag = []
+            for j in range(len(setup_line_number)-1):
+                for i in range(len(slider_events_range)):
+                    if slider_events_range[i][0] > setup_line_number[j] and slider_events_range[i][0] < setup_line_number[j+1]:
+                        slider_between_setups += 1
+                slider_drag.append(slider_between_setups)
+                slider_between_setups = 0
+            
+            for i in range(len(slider_events_range)):
+                if slider_events_range[i][0] > setup_line_number[len(setup_line_number)-1] and slider_events_range[i][0] < end_of_last_run:
+                    slider_between_setups += 1
+            slider_drag.append(slider_between_setups)
+            slider_between_setups = 0
+
+            tick_num_list=[]
+            for i in range(len(custom_message)):
+                temp = string.find(custom_message[i][1], 'count_')
+                tick_num_list.append(custom_message[i][1][temp+6:])
+            del tick_num_list[0]
+            tick_num_list.append('N/A')
+
+
+            setup_chunk_row = zip (student_name_list, model_name_list, starting_time_list, setup_count_list, timestamp_list, duration_list, tick_num_list, button_press, slider_drag)
+           
+            print filename[filenum] + " processed"
+            writer.writerows(setup_chunk_row)          
+        
+#V_1.7, Created by Bryan Guo for the ModelSim project. Mar. 13th 2014
